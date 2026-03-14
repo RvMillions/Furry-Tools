@@ -27,13 +27,22 @@ try:
     PPRESENCE_AVAILABLE = True
 except ImportError:
     PPRESENCE_AVAILABLE = False
-    print("pypresence non installé, la présence Discord ne sera pas disponible.")
 
 def global_excepthook(exctype, value, tb):
     error_msg = ''.join(traceback.format_exception(exctype, value, tb))
-    print("Exception non gérée :", error_msg)
-    QMessageBox.critical(None, "Erreur inattendue",
-                         f"Une erreur inattendue a provoqué l'arrêt du programme.\n\n{error_msg}")
+    log_dir = os.path.join(os.environ['APPDATA'], 'FurryTools', 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f'error_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+    with open(log_file, 'w', encoding='utf-8') as f:
+        f.write(f"Date: {datetime.now()}\n")
+        f.write(f"Python: {sys.version}\n")
+        f.write(f"OS: {sys.platform}\n")
+        f.write(f"Erreur: {error_msg}\n")
+    try:
+        QMessageBox.critical(None, "Erreur inattendue",
+                           f"Une erreur est survenue. Un log a été créé :\n{log_file}\n\n{str(value)[:200]}")
+    except:
+        pass
     sys.__excepthook__(exctype, value, tb)
 
 sys.excepthook = global_excepthook
@@ -42,6 +51,8 @@ CONFIG_DIR = os.path.join(os.environ['APPDATA'], 'FurryTools')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 CACHE_FILE = os.path.join(CONFIG_DIR, 'cache.json')
 DISCORD_CLIENT_ID = "1482031246463996127"
+
+os.makedirs(CONFIG_DIR, exist_ok=True)
 
 def load_config():
     default_config = {
@@ -54,15 +65,13 @@ def load_config():
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                if 'private_password_hash' in config:
-                    del config['private_password_hash']
-                if 'discord_client_id' in config:
-                    del config['discord_client_id']
+                config.pop('private_password_hash', None)
+                config.pop('discord_client_id', None)
                 for key in default_config:
                     if key not in config:
                         config[key] = default_config[key]
                 return config
-        except:
+        except Exception as e:
             return default_config
     return default_config
 
@@ -71,8 +80,11 @@ def save_config(config):
     config_copy = config.copy()
     config_copy.pop('private_password_hash', None)
     config_copy.pop('discord_client_id', None)
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-        json.dump(config_copy, f, indent=4)
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config_copy, f, indent=4)
+    except Exception as e:
+        pass
 
 def load_cache():
     if os.path.exists(CACHE_FILE):
@@ -89,7 +101,7 @@ def save_cache(cache):
         with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(cache, f, indent=4)
     except Exception as e:
-        print("Erreur lors de la sauvegarde du cache :", e)
+        pass
 
 class NameFetcher(QThread):
     names_ready = pyqtSignal(dict)
@@ -105,16 +117,16 @@ class NameFetcher(QThread):
             if appid.isdigit():
                 try:
                     url = f"https://store.steampowered.com/api/appdetails?appids={appid}"
-                    with urllib.request.urlopen(url, timeout=5) as response:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=5) as response:
                         data = json.loads(response.read().decode())
-                        if data[appid]['success']:
+                        if data.get(appid, {}).get('success'):
                             name = data[appid]['data']['name']
                             result[appid] = name
                         else:
                             result[appid] = appid
                 except Exception as e:
                     result[appid] = appid
-                    self.error_occurred.emit(f"Erreur pour {appid}: {str(e)}")
             else:
                 result[appid] = appid
         self.names_ready.emit(result)
@@ -183,6 +195,7 @@ class SettingsDialog(QDialog):
 
     def initUI(self):
         layout = QVBoxLayout()
+        
         self.setStyleSheet("""
             QDialog {
                 background-color: #2b2b2b;
@@ -241,6 +254,7 @@ class SettingsDialog(QDialog):
                 color: #f0f0f0;
             }
         """)
+        
         size_group = QGroupBox("Taille du logo")
         size_layout = QHBoxLayout()
         self.size_slider = QSlider(Qt.Horizontal)
@@ -261,12 +275,15 @@ class SettingsDialog(QDialog):
         self.logo_label = QLabel()
         self.update_logo_display()
         logo_layout.addWidget(self.logo_label)
+        
         change_logo_btn = QPushButton("Changer le logo...")
         change_logo_btn.clicked.connect(self.change_logo)
         logo_layout.addWidget(change_logo_btn)
+        
         reset_logo_btn = QPushButton("Restaurer le logo par défaut")
         reset_logo_btn.clicked.connect(self.reset_logo)
         logo_layout.addWidget(reset_logo_btn)
+        
         logo_group.setLayout(logo_layout)
         layout.addWidget(logo_group)
 
@@ -274,6 +291,9 @@ class SettingsDialog(QDialog):
         discord_layout = QVBoxLayout()
         self.discord_check = QCheckBox("Activer la présence Discord")
         self.discord_check.setChecked(self.config.get('enable_discord_rpc', False))
+        if not PPRESENCE_AVAILABLE:
+            self.discord_check.setEnabled(False)
+            self.discord_check.setText("Activer la présence Discord (pypresence non installé)")
         discord_layout.addWidget(self.discord_check)
         discord_group.setLayout(discord_layout)
         layout.addWidget(discord_group)
@@ -283,6 +303,7 @@ class SettingsDialog(QDialog):
         self.games_list = QListWidget()
         self.games_list.setSelectionMode(QListWidget.NoSelection)
         self.list_items = {}
+        
         for appid in sorted(self.all_appids):
             display = self.known_names.get(appid, appid)
             item = QListWidgetItem(display)
@@ -291,6 +312,7 @@ class SettingsDialog(QDialog):
             item.setData(Qt.UserRole, appid)
             self.games_list.addItem(item)
             self.list_items[appid] = item
+        
         games_layout.addWidget(self.games_list)
         games_group.setLayout(games_layout)
         layout.addWidget(games_group)
@@ -304,6 +326,7 @@ class SettingsDialog(QDialog):
         buttons_layout.addWidget(ok_btn)
         buttons_layout.addWidget(cancel_btn)
         layout.addLayout(buttons_layout)
+        
         self.setLayout(layout)
 
     def update_logo_display(self):
@@ -322,11 +345,6 @@ class SettingsDialog(QDialog):
             return
         try:
             ext = os.path.splitext(file_path)[1].lower()
-            if ext != '.gif':
-                pixmap = QPixmap(file_path)
-                if pixmap.isNull():
-                    QMessageBox.warning(self, "Erreur", "Impossible de charger l'image.")
-                    return
             dest_filename = "custom_logo" + ext
             dest_path = os.path.join(CONFIG_DIR, dest_filename)
             shutil.copy2(file_path, dest_path)
@@ -344,7 +362,7 @@ class SettingsDialog(QDialog):
         if missing:
             self.name_fetcher = NameFetcher(missing)
             self.name_fetcher.names_ready.connect(self.update_names)
-            self.name_fetcher.error_occurred.connect(self.show_error)
+            self.name_fetcher.error_occurred.connect(lambda msg: print(f"Erreur fetch: {msg}"))
             self.name_fetcher.start()
 
     def update_names(self, new_names):
@@ -352,9 +370,6 @@ class SettingsDialog(QDialog):
         for appid, name in new_names.items():
             if appid in self.list_items:
                 self.list_items[appid].setText(name)
-
-    def show_error(self, error_msg):
-        QMessageBox.warning(self, "Info", error_msg)
 
     def get_updated_config(self):
         self.config['icon_size'] = self.size_slider.value()
@@ -421,7 +436,9 @@ class ProfileCreationDialog(QDialog):
                 color: #f0f0f0;
             }
         """)
+        
         layout = QVBoxLayout()
+        
         label = QLabel("Sélectionnez les jeux à inclure dans le profile :")
         label.setStyleSheet("color: #f0f0f0;")
         layout.addWidget(label)
@@ -429,6 +446,7 @@ class ProfileCreationDialog(QDialog):
         self.games_list = QListWidget()
         self.games_list.setSelectionMode(QListWidget.NoSelection)
         self.list_items = {}
+        
         for appid in sorted(self.appids_with_paths.keys()):
             display = self.known_names.get(appid, appid)
             item = QListWidgetItem(display)
@@ -437,6 +455,7 @@ class ProfileCreationDialog(QDialog):
             item.setData(Qt.UserRole, appid)
             self.games_list.addItem(item)
             self.list_items[appid] = item
+        
         layout.addWidget(self.games_list)
 
         select_buttons_layout = QHBoxLayout()
@@ -459,6 +478,7 @@ class ProfileCreationDialog(QDialog):
         buttons_layout.addWidget(create_btn)
         buttons_layout.addWidget(cancel_btn)
         layout.addLayout(buttons_layout)
+        
         self.setLayout(layout)
 
     def select_all(self):
@@ -476,16 +496,20 @@ class ProfileCreationDialog(QDialog):
             if item.checkState() == Qt.Checked:
                 appid = item.data(Qt.UserRole)
                 selected_appids.append(appid)
+        
         if not selected_appids:
             QMessageBox.warning(self, "Aucune sélection", "Veuillez sélectionner au moins un jeu.")
             return
+        
         file_paths = [self.appids_with_paths[appid] for appid in selected_appids if appid in self.appids_with_paths]
         if not file_paths:
             QMessageBox.warning(self, "Erreur", "Aucun fichier trouvé pour les jeux sélectionnés.")
             return
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         zip_name = f"profile_{timestamp}.zip"
         downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+        
         self.thread = ZipCreationThread(file_paths, zip_name, downloads)
         self.progress_dialog = QProgressDialog("Création du profile en cours...", "Annuler", 0, 100, self)
         self.progress_dialog.setWindowModality(Qt.WindowModal)
@@ -510,15 +534,19 @@ class FurryTools(QWidget):
     def __init__(self):
         super().__init__()
         self.config = load_config()
+        self.steam_folder = None
+        self.steam_path = None
+        self.target_folder = None
         self.detect_steam_path()
         self.movie = None
         self.game_names = load_cache()
         self.name_fetcher = None
         self.file_map = {}
-        self.initUI()
-        self.drag_position = None
         self.discord_rpc_thread = None
         self.discord_rpc_active = False
+        
+        self.initUI()
+        self.drag_position = None
         self.start_discord_rpc_if_enabled()
 
     def detect_steam_path(self):
@@ -526,38 +554,63 @@ class FurryTools(QWidget):
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
             steam_reg_path, _ = winreg.QueryValueEx(key, "SteamPath")
             winreg.CloseKey(key)
-            if os.path.exists(steam_reg_path):
+            steam_reg_path = steam_reg_path.replace('/', '\\')
+            if os.path.exists(os.path.join(steam_reg_path, "steam.exe")):
                 self.steam_folder = steam_reg_path
                 self.steam_path = os.path.join(steam_reg_path, "steam.exe")
                 self.target_folder = os.path.join(steam_reg_path, "config", "stplug-in")
                 return
         except:
             pass
+
         common_paths = [
-            r"C:\Program Files (x86)\Steam",
-            r"C:\Program Files\Steam",
-            r"D:\Steam",
-            r"E:\Steam"
+            os.path.expandvars(r"%ProgramFiles(x86)%\Steam"),
+            os.path.expandvars(r"%ProgramFiles%\Steam"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Steam"),
+            "C:\\Program Files (x86)\\Steam",
+            "C:\\Program Files\\Steam",
+            "D:\\Steam",
+            "E:\\Steam"
         ]
+        
         for path in common_paths:
-            if os.path.exists(os.path.join(path, "steam.exe")):
-                self.steam_folder = path
-                self.steam_path = os.path.join(path, "steam.exe")
-                self.target_folder = os.path.join(path, "config", "stplug-in")
+            expanded = os.path.expandvars(path)
+            steam_exe = os.path.join(expanded, "steam.exe")
+            if os.path.exists(steam_exe):
+                self.steam_folder = expanded
+                self.steam_path = steam_exe
+                self.target_folder = os.path.join(expanded, "config", "stplug-in")
                 return
-        self.steam_path = r"D:\Steam\steam.exe"
-        self.steam_folder = r"D:\Steam"
-        self.target_folder = r"D:\Steam\config\stplug-in"
+        
+        reply = QMessageBox.question(None, "Steam non trouvé",
+                                   "Impossible de trouver Steam automatiquement.\n"
+                                   "Voulez-vous sélectionner le dossier Steam manuellement ?",
+                                   QMessageBox.Yes | QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            folder = QFileDialog.getExistingDirectory(None, "Sélectionner le dossier Steam")
+            if folder and os.path.exists(os.path.join(folder, "steam.exe")):
+                self.steam_folder = folder
+                self.steam_path = os.path.join(folder, "steam.exe")
+                self.target_folder = os.path.join(folder, "config", "stplug-in")
+                return
+        
+        self.steam_folder = None
+        self.steam_path = None
+        self.target_folder = None
 
     def initUI(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        
         icon_size = self.config.get('icon_size', 150)
         self.setFixedSize(icon_size, icon_size)
+        
         self.logo_label = QLabel(self)
         self.logo_label.setScaledContents(True)
         self.load_logo()
         self.logo_label.setGeometry(0, 0, icon_size, icon_size)
+        
         self.setAcceptDrops(True)
 
         menu_style = """
@@ -589,6 +642,7 @@ class FurryTools(QWidget):
                 margin: 5px 10px;
             }
         """
+        
         self.context_menu = QMenu(self)
         self.context_menu.setStyleSheet(menu_style)
 
@@ -604,20 +658,28 @@ class FurryTools(QWidget):
 
         self.restart_action = self.context_menu.addAction("Redémarrer Steam")
         self.restart_action.triggered.connect(self.restart_steam)
+        
         reset_cache_action = self.context_menu.addAction("Reset cache")
         reset_cache_action.triggered.connect(self.reset_cache)
+        
         settings_action = self.context_menu.addAction("Paramètres")
         settings_action.triggered.connect(self.open_settings)
+        
         open_folder_action = self.context_menu.addAction("Ouvrir le dossier des jeux")
         open_folder_action.triggered.connect(self.open_target_folder)
+        
         extract_appid_action = self.context_menu.addAction("Extraire AppID du lien")
         extract_appid_action.triggered.connect(self.extract_appid_from_clipboard)
+        
         discord_action = self.context_menu.addAction("Project Lightning")
         discord_action.triggered.connect(self.open_discord)
+        
         credits_action = self.context_menu.addAction("Crédits")
         credits_action.triggered.connect(self.show_credits)
+        
         steamtools_action = self.context_menu.addAction("Downloads SteamTools")
         steamtools_action.triggered.connect(self.download_steamtools)
+        
         quit_action = self.context_menu.addAction("Quitter Furry Tools")
         quit_action.triggered.connect(self.close_application)
 
@@ -648,18 +710,29 @@ class FurryTools(QWidget):
                 if not pixmap.isNull():
                     self.logo_label.setPixmap(pixmap)
                     return
+
+        possible_paths = []
+        
         if getattr(sys, 'frozen', False):
             base_path = sys._MEIPASS
         else:
             base_path = os.path.dirname(os.path.abspath(__file__))
-        default_logo = os.path.join(base_path, "logo.png")
-        if os.path.exists(default_logo):
-            pixmap = QPixmap(default_logo)
-            self.logo_label.setPixmap(pixmap)
-        else:
-            self.logo_label.setText("🐾")
-            self.logo_label.setAlignment(Qt.AlignCenter)
-            self.logo_label.setStyleSheet("font-size: 80px; color: #ccc;")
+        possible_paths.append(os.path.join(base_path, "logo.png"))
+        
+        possible_paths.append(os.path.join(os.getcwd(), "logo.png"))
+        
+        possible_paths.append(os.path.join(CONFIG_DIR, "logo.png"))
+
+        for path in possible_paths:
+            if os.path.exists(path):
+                pixmap = QPixmap(path)
+                if not pixmap.isNull():
+                    self.logo_label.setPixmap(pixmap)
+                    return
+
+        self.logo_label.setText("🐾")
+        self.logo_label.setAlignment(Qt.AlignCenter)
+        self.logo_label.setStyleSheet("font-size: 80px; color: #ccc;")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -678,13 +751,18 @@ class FurryTools(QWidget):
 
     def contextMenuEvent(self, event):
         try:
-            if self.is_steam_running():
-                self.restart_action.setText("Redémarrer Steam")
+            if self.steam_path and os.path.exists(self.steam_path):
+                if self.is_steam_running():
+                    self.restart_action.setText("Redémarrer Steam")
+                else:
+                    self.restart_action.setText("Lancer Steam")
             else:
-                self.restart_action.setText("Lancer Steam")
+                self.restart_action.setText("Steam non trouvé")
+                self.restart_action.setEnabled(False)
+            
             self.context_menu.exec_(QCursor.pos())
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'affichage du menu : {str(e)}")
+            QMessageBox.critical(self, "Erreur", f"Erreur menu: {str(e)}")
 
     def is_steam_running(self):
         try:
@@ -697,19 +775,22 @@ class FurryTools(QWidget):
         QDesktopServices.openUrl(QUrl("https://discord.gg/g7eqjzykrw"))
 
     def show_credits(self):
-        QMessageBox.information(self, "Crédits", "Created by rvmillions\n\nProject Lightning n'a rien à voir avec ces projets.")
+        QMessageBox.information(self, "Crédits", "by rvmillions")
 
     def download_steamtools(self):
         QDesktopServices.openUrl(QUrl("https://www.steamtools.net/download"))
 
     def open_target_folder(self):
+        if not self.target_folder:
+            QMessageBox.warning(self, "Erreur", "Dossier Steam non trouvé")
+            return
+        
         try:
-            if os.path.exists(self.target_folder):
-                os.startfile(self.target_folder)
-            else:
-                QMessageBox.warning(self, "Erreur", "Le dossier n'existe pas.")
+            if not os.path.exists(self.target_folder):
+                os.makedirs(self.target_folder)
+            os.startfile(self.target_folder)
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Impossible d'ouvrir le dossier : {e}")
+            QMessageBox.critical(self, "Erreur", f"Impossible d'ouvrir le dossier: {e}")
 
     def extract_appid_from_clipboard(self):
         clipboard = QApplication.clipboard()
@@ -717,6 +798,7 @@ class FurryTools(QWidget):
         if not text:
             QMessageBox.warning(self, "Erreur", "Le presse-papiers est vide.")
             return
+        
         match = re.search(r'\b(\d{1,7})\b', text)
         if match:
             appid = match.group(1)
@@ -728,17 +810,19 @@ class FurryTools(QWidget):
     def open_settings(self):
         try:
             current_appids = []
-            if os.path.exists(self.target_folder):
+            if self.target_folder and os.path.exists(self.target_folder):
                 try:
                     files = [f for f in os.listdir(self.target_folder) if f.lower().endswith('.lua')]
                     current_appids = [os.path.splitext(f)[0] for f in files]
                 except:
                     pass
+            
             dialog = SettingsDialog(self, self.config, current_appids, self.game_names)
             if dialog.exec_() == QDialog.Accepted:
                 new_config = dialog.get_updated_config()
                 old_discord_enabled = self.config.get('enable_discord_rpc', False)
                 new_discord_enabled = new_config.get('enable_discord_rpc', False)
+                
                 self.config = new_config
                 save_config(self.config)
 
@@ -746,6 +830,7 @@ class FurryTools(QWidget):
                 self.setFixedSize(new_size, new_size)
                 self.logo_label.setGeometry(0, 0, new_size, new_size)
                 self.load_logo()
+                
                 self.game_names.update(dialog.known_names)
                 save_cache(self.game_names)
 
@@ -753,8 +838,9 @@ class FurryTools(QWidget):
                     self.start_discord_rpc_if_enabled()
                 elif not new_discord_enabled and old_discord_enabled:
                     self.stop_discord_rpc()
+                    
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur dans les paramètres : {str(e)}")
+            QMessageBox.critical(self, "Erreur", f"Erreur paramètres: {str(e)}")
             traceback.print_exc()
 
     def start_discord_rpc_if_enabled(self):
@@ -770,13 +856,14 @@ class FurryTools(QWidget):
 
     def discord_rpc_loop(self):
         if not DISCORD_CLIENT_ID or len(DISCORD_CLIENT_ID) < 17 or not DISCORD_CLIENT_ID.isdigit():
-            print("Discord RPC : Client ID invalide (constant). Vérifiez le code.")
             self.discord_rpc_active = False
             return
+        
         try:
             RPC = Presence(DISCORD_CLIENT_ID)
             RPC.connect()
             start_time = int(time.time())
+            
             while self.discord_rpc_active:
                 RPC.update(
                     state="Furry Tools",
@@ -785,8 +872,8 @@ class FurryTools(QWidget):
                     large_text="Furry Tools",
                     start=start_time,
                     buttons=[
-                        {"label": "Rejoindre Discord", "url": "https://discord.gg/g7eqjzykrw"},
-                        {"label": "Site Web", "url": "https://twitchfamily.onrender.com"}
+                        {"label": "Discord", "url": "https://discord.gg/g7eqjzykrw"},
+                        {"label": "GitHub", "url": "https://github.com"}
                     ]
                 )
                 for _ in range(15):
@@ -795,29 +882,40 @@ class FurryTools(QWidget):
                     time.sleep(1)
             RPC.close()
         except Exception as e:
-            print(f"Discord RPC error: {e}")
             self.discord_rpc_active = False
 
     def create_profile(self):
+        if not self.target_folder:
+            QMessageBox.warning(self, "Erreur", "Dossier Steam non trouvé")
+            return
+            
         if not os.path.exists(self.target_folder):
             QMessageBox.warning(self, "Erreur", "Le dossier cible n'existe pas.")
             return
+        
         try:
             files = [f for f in os.listdir(self.target_folder) if f.lower().endswith('.lua')]
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Impossible de lister les fichiers : {e}")
+            QMessageBox.critical(self, "Erreur", f"Impossible de lister les fichiers: {e}")
             return
+        
         if not files:
             QMessageBox.information(self, "Info", "Aucun fichier .lua trouvé.")
             return
+        
         appids_with_paths = {}
         for f in files:
             appid = os.path.splitext(f)[0]
             appids_with_paths[appid] = os.path.join(self.target_folder, f)
+        
         dialog = ProfileCreationDialog(self, appids_with_paths, self.game_names)
         dialog.exec_()
 
     def import_profile(self):
+        if not self.target_folder:
+            QMessageBox.warning(self, "Erreur", "Dossier Steam non trouvé")
+            return
+            
         zip_path, _ = QFileDialog.getOpenFileName(
             self, "Sélectionner un fichier profile",
             os.path.join(os.path.expanduser("~"), "Downloads"),
@@ -825,12 +923,14 @@ class FurryTools(QWidget):
         )
         if not zip_path:
             return
+        
         if not os.path.exists(self.target_folder):
             try:
                 os.makedirs(self.target_folder)
             except Exception as e:
-                QMessageBox.critical(self, "Erreur", f"Impossible de créer le dossier cible : {e}")
+                QMessageBox.critical(self, "Erreur", f"Impossible de créer le dossier cible: {e}")
                 return
+        
         self.extract_thread = ZipExtractThread(zip_path, self.target_folder)
         self.progress_dialog = QProgressDialog("Import du profile en cours...", "Annuler", 0, 100, self)
         self.progress_dialog.setWindowModality(Qt.WindowModal)
@@ -846,45 +946,49 @@ class FurryTools(QWidget):
         self.progress_dialog.close()
         if extracted_files:
             QMessageBox.information(self, "Succès",
-                                    f"{len(extracted_files)} fichier(s) .lua importé(s) avec succès.")
+                                  f"{len(extracted_files)} fichier(s) .lua importé(s) avec succès.")
         else:
             QMessageBox.information(self, "Info", "Aucun fichier .lua trouvé dans l'archive.")
 
     def on_import_error(self, error_msg):
         self.progress_dialog.close()
-        QMessageBox.critical(self, "Erreur", f"Échec de l'import :\n{error_msg}")
+        QMessageBox.critical(self, "Erreur", f"Échec de l'import:\n{error_msg}")
 
     def safe_populate_jeux_menu(self):
         try:
             self.populate_jeux_menu()
         except Exception as e:
-            error_msg = traceback.format_exc()
-            QMessageBox.critical(self, "Erreur", f"Erreur lors du chargement des jeux :\n{error_msg}")
             self.jeux_menu.clear()
-            error_action = self.jeux_menu.addAction(f"Erreur : {str(e)}")
+            error_action = self.jeux_menu.addAction(f"Erreur de chargement")
             error_action.setEnabled(False)
 
     def populate_jeux_menu(self):
         self.jeux_menu.clear()
-        if not os.path.exists(self.target_folder):
-            action = self.jeux_menu.addAction("Dossier introuvable")
+        
+        if not self.target_folder or not os.path.exists(self.target_folder):
+            action = self.jeux_menu.addAction("Dossier Steam introuvable")
             action.setEnabled(False)
             return
+        
         try:
             files = [f for f in os.listdir(self.target_folder) if f.lower().endswith('.lua')]
         except Exception as e:
-            action = self.jeux_menu.addAction(f"Erreur: {e}")
+            action = self.jeux_menu.addAction(f"Erreur accès dossier")
             action.setEnabled(False)
             return
+        
         if not files:
-            action = self.jeux_menu.addAction("Aucun fichier .lua")
+            action = self.jeux_menu.addAction("Aucun jeu trouvé")
             action.setEnabled(False)
             return
+        
         appids = [os.path.splitext(f)[0] for f in files]
         self.file_map = {appid: os.path.join(self.target_folder, f) for appid, f in zip(appids, files)}
+        
         private_set = set(self.config.get('private_games', []))
         public_appids = [aid for aid in appids if aid not in private_set]
         private_appids = [aid for aid in appids if aid in private_set]
+        
         if public_appids:
             public_menu = QMenu("Public", self)
             public_menu.setStyleSheet(self.context_menu.styleSheet())
@@ -893,6 +997,7 @@ class FurryTools(QWidget):
         else:
             action = self.jeux_menu.addAction("Public (aucun)")
             action.setEnabled(False)
+        
         if private_appids:
             private_menu = QMenu("Privé", self)
             private_menu.setStyleSheet(self.context_menu.styleSheet())
@@ -901,6 +1006,7 @@ class FurryTools(QWidget):
         else:
             action = self.jeux_menu.addAction("Privé (aucun)")
             action.setEnabled(False)
+        
         all_to_fetch = set(public_appids) | set(private_appids)
         missing = [aid for aid in all_to_fetch if aid not in self.game_names]
         if missing:
@@ -912,7 +1018,7 @@ class FurryTools(QWidget):
             self.name_fetcher.wait(1000)
         self.name_fetcher = NameFetcher(appids)
         self.name_fetcher.names_ready.connect(self.on_names_fetched)
-        self.name_fetcher.error_occurred.connect(self.on_fetch_error)
+        self.name_fetcher.error_occurred.connect(lambda msg: print(f"Erreur fetch: {msg}"))
         self.name_fetcher.start()
 
     def _build_game_submenu(self, menu, appids):
@@ -920,20 +1026,20 @@ class FurryTools(QWidget):
             display_name = self.game_names.get(appid, appid)
             game_submenu = QMenu(display_name, self)
             game_submenu.setStyleSheet(self.context_menu.styleSheet())
+            
             delete_action = QAction("Supprimer", self)
             delete_action.triggered.connect(lambda checked, a=appid: self.delete_game(a))
             game_submenu.addAction(delete_action)
+            
             steamdb_action = QAction("SteamDB", self)
             steamdb_action.triggered.connect(lambda checked, a=appid: self.open_steamdb(a))
             game_submenu.addAction(steamdb_action)
+            
             menu.addMenu(game_submenu)
 
     def on_names_fetched(self, new_names):
         self.game_names.update(new_names)
         save_cache(self.game_names)
-
-    def on_fetch_error(self, error_msg):
-        print("Erreur de récupération:", error_msg)
 
     def delete_game(self, appid):
         try:
@@ -941,35 +1047,41 @@ class FurryTools(QWidget):
             if not file_path or not os.path.exists(file_path):
                 QMessageBox.warning(self, "Erreur", "Fichier introuvable.")
                 return
+            
             reply = QMessageBox.question(self, "Confirmation",
-                                          f"Supprimer définitivement {appid}.lua ?",
-                                          QMessageBox.Yes | QMessageBox.No)
+                                        f"Supprimer définitivement {appid}.lua ?",
+                                        QMessageBox.Yes | QMessageBox.No)
             if reply == QMessageBox.Yes:
                 os.remove(file_path)
                 self.file_map.pop(appid, None)
                 if appid in self.config['private_games']:
                     self.config['private_games'].remove(appid)
                     save_config(self.config)
-                if appid in self.game_names:
-                    del self.game_names[appid]
-                    save_cache(self.game_names)
                 QMessageBox.information(self, "Succès", "Fichier supprimé.")
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Impossible de supprimer : {e}")
+            QMessageBox.critical(self, "Erreur", f"Impossible de supprimer: {e}")
 
     def open_steamdb(self, appid):
         QDesktopServices.openUrl(QUrl(f"https://steamdb.info/app/{appid}/"))
 
     def restart_steam(self):
+        if not self.steam_path or not os.path.exists(self.steam_path):
+            QMessageBox.warning(self, "Erreur", "Steam non trouvé")
+            return
+            
         try:
             if self.is_steam_running():
                 self._kill_steam()
                 time.sleep(1)
             self._launch_steam()
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors du redémarrage : {e}")
+            QMessageBox.critical(self, "Erreur", f"Erreur redémarrage: {e}")
 
     def reset_cache(self):
+        if not self.steam_folder or not os.path.exists(self.steam_folder):
+            QMessageBox.warning(self, "Erreur", "Steam non trouvé")
+            return
+            
         try:
             if self.is_steam_running():
                 self._kill_steam()
@@ -977,7 +1089,7 @@ class FurryTools(QWidget):
             self._clear_cache()
             self._launch_steam()
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors du reset cache : {e}")
+            QMessageBox.critical(self, "Erreur", f"Erreur reset cache: {e}")
 
     def _kill_steam(self):
         subprocess.run(["taskkill", "/F", "/IM", "steam.exe"], capture_output=True)
@@ -986,11 +1098,12 @@ class FurryTools(QWidget):
         if os.path.exists(self.steam_path):
             subprocess.Popen([self.steam_path])
         else:
-            QMessageBox.warning(self, "Erreur", f"Steam introuvable :\n{self.steam_path}")
+            QMessageBox.warning(self, "Erreur", f"Steam introuvable")
 
     def _clear_cache(self):
         cache_folders = ['appcache', 'depotcache']
         cleared_any = False
+        
         for folder in cache_folders:
             folder_path = os.path.join(self.steam_folder, folder)
             if os.path.exists(folder_path):
@@ -1003,7 +1116,8 @@ class FurryTools(QWidget):
                             shutil.rmtree(item_path)
                     cleared_any = True
                 except Exception as e:
-                    QMessageBox.warning(self, "Erreur", f"Impossible de vider {folder} :\n{e}")
+                    pass
+        
         if cleared_any:
             QMessageBox.information(self, "Cache vidé", "Les caches Steam ont été nettoyés.")
         else:
@@ -1024,16 +1138,24 @@ class FurryTools(QWidget):
         event.ignore()
 
     def dropEvent(self, event):
+        if not self.target_folder:
+            QMessageBox.warning(self, "Erreur", "Dossier Steam non trouvé")
+            return
+            
         try:
             if not os.path.exists(self.target_folder):
                 os.makedirs(self.target_folder)
+            
             copied_files = []
             extracted_files = []
+            
             for url in event.mimeData().urls():
                 if not url.isLocalFile():
                     continue
+                
                 file_path = url.toLocalFile()
                 lower_path = file_path.lower()
+                
                 if lower_path.endswith('.lua'):
                     shutil.copy(file_path, self.target_folder)
                     copied_files.append(os.path.basename(file_path))
@@ -1043,6 +1165,7 @@ class FurryTools(QWidget):
                             if member.lower().endswith('.lua'):
                                 zip_ref.extract(member, self.target_folder)
                                 extracted_files.append(os.path.basename(member))
+            
             if copied_files or extracted_files:
                 msg = ""
                 if copied_files:
@@ -1053,7 +1176,7 @@ class FurryTools(QWidget):
             else:
                 QMessageBox.information(self, "Info", "Aucun fichier .lua trouvé.")
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors du drop : {e}")
+            QMessageBox.critical(self, "Erreur", f"Erreur lors du drop: {e}")
 
 def single_instance_check():
     mutex_name = "FurryTools_Instance_Mutex"
@@ -1068,10 +1191,13 @@ def main():
     if not single_instance_check():
         QMessageBox.critical(None, "Erreur", "Furry Tools est déjà en cours d'exécution.")
         return
+    
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+    
     window = FurryTools()
     window.show()
+    
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
