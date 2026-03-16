@@ -1445,7 +1445,7 @@ class FurryTools(QWidget):
             return False
 
     def open_discord(self):
-        QDesktopServices.openUrl(QUrl("https://discord.gg/g7eqjzykrw"))
+        QDesktopServices.openUrl(QUrl("https://discord.com/invite/Hs9Crnhg"))
 
     def show_credits(self):
         QMessageBox.information(self, "Crédits", "by rvmillions")
