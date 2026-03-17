@@ -20,7 +20,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QMenu,
                              QListWidgetItem, QInputDialog, QFileDialog,
                              QProgressDialog, QProgressBar, QDesktopWidget,
                              QScrollArea, QGridLayout, QFrame, QWidgetAction,
-                             QComboBox, QSizePolicy, QToolTip, QTabWidget)
+                             QComboBox, QSizePolicy, QToolTip, QTabWidget,
+                             QSplitter, QApplication)
 from PyQt5.QtCore import Qt, QPoint, QUrl, QThread, pyqtSignal, QSize, QTimer, QRect
 from PyQt5.QtGui import (QPixmap, QCursor, QDesktopServices, QFont, 
                          QFontDatabase, QIcon, QMovie, QClipboard, QFontMetrics,
@@ -56,7 +57,6 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 CACHE_FILE = os.path.join(CONFIG_DIR, 'cache.json')
 DISCORD_CLIENT_ID = "1482031246463996127"
 
-# Thèmes prédéfinis
 THEMES = {
     "Gris foncé": {
         'bg_primary': '#2b2b2b',
@@ -101,6 +101,94 @@ THEMES = {
         'border_focus': '#555555',
         'accent': '#4a4a4a',
         'accent_hover': '#5a5a5a'
+    },
+    "Violet profond": {
+        'bg_primary': '#2d1b3a',
+        'bg_secondary': '#3d2a4a',
+        'bg_tertiary': '#4d3a5a',
+        'text_primary': '#f0e6ff',
+        'text_secondary': '#d4c2e6',
+        'border': '#6b4f8c',
+        'border_focus': '#8f6eb3',
+        'accent': '#7e5aa8',
+        'accent_hover': '#9e7ac8'
+    },
+    "Violet clair": {
+        'bg_primary': '#3a2a4a',
+        'bg_secondary': '#4a3a5a',
+        'bg_tertiary': '#5a4a6a',
+        'text_primary': '#ffffff',
+        'text_secondary': '#e6d9ff',
+        'border': '#8a6cb0',
+        'border_focus': '#aa8cd0',
+        'accent': '#9a7cc0',
+        'accent_hover': '#ba9ce0'
+    },
+    "Galaxy": {
+        'bg_primary': '#0c0b1a',
+        'bg_secondary': '#1a1a2e',
+        'bg_tertiary': '#2a2a3e',
+        'text_primary': '#ffffff',
+        'text_secondary': '#b8b8d0',
+        'border': '#4a3a6a',
+        'border_focus': '#6a4a8a',
+        'accent': '#5a3a7a',
+        'accent_hover': '#7a4a9a'
+    },
+    "Galaxy nébuleuse": {
+        'bg_primary': '#0f0b1a',
+        'bg_secondary': '#1f1a2e',
+        'bg_tertiary': '#2f2a3e',
+        'text_primary': '#f0e6ff',
+        'text_secondary': '#c2b8d0',
+        'border': '#5a3a6a',
+        'border_focus': '#7a4a8a',
+        'accent': '#6a3a7a',
+        'accent_hover': '#8a4a9a'
+    },
+    "Galaxy profond": {
+        'bg_primary': '#0a0b1a',
+        'bg_secondary': '#1a1b2a',
+        'bg_tertiary': '#2a2b3a',
+        'text_primary': '#e0e0ff',
+        'text_secondary': '#b0b0d0',
+        'border': '#3a3a5a',
+        'border_focus': '#5a5a7a',
+        'accent': '#4a4a6a',
+        'accent_hover': '#6a6a8a'
+    },
+    "Rose bonbon": {
+        'bg_primary': '#3a1a2a',
+        'bg_secondary': '#4a2a3a',
+        'bg_tertiary': '#5a3a4a',
+        'text_primary': '#ffe6f0',
+        'text_secondary': '#ffccdd',
+        'border': '#d48cb0',
+        'border_focus': '#e4acd0',
+        'accent': '#b46c90',
+        'accent_hover': '#d48cb0'
+    },
+    "Vert forêt": {
+        'bg_primary': '#1a2a1a',
+        'bg_secondary': '#2a3a2a',
+        'bg_tertiary': '#3a4a3a',
+        'text_primary': '#e0f0e0',
+        'text_secondary': '#b0d0b0',
+        'border': '#4a6a4a',
+        'border_focus': '#6a8a6a',
+        'accent': '#5a7a5a',
+        'accent_hover': '#7a9a7a'
+    },
+    "Rouge rubis": {
+        'bg_primary': '#2a1a1a',
+        'bg_secondary': '#3a2a2a',
+        'bg_tertiary': '#4a3a3a',
+        'text_primary': '#ffe6e6',
+        'text_secondary': '#ffcccc',
+        'border': '#b46c6c',
+        'border_focus': '#d48c8c',
+        'accent': '#a45c5c',
+        'accent_hover': '#c47c7c'
     }
 }
 
@@ -123,7 +211,9 @@ def load_config():
         'name_max_length': 40,
         'dialog_width': 600,
         'dialog_height': 500,
-        'theme': 'Gris foncé'
+        'theme': 'Gris foncé',
+        'start_with_windows': False,
+        'auto_launch_steam': False
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -274,19 +364,26 @@ def get_theme_stylesheet(theme_name):
         }}
         QCheckBox {{
             color: {theme['text_primary']};
-            spacing: 6px;
+            spacing: 8px;
         }}
         QCheckBox::indicator {{
-            width: 16px;
-            height: 16px;
-        }}
-        QCheckBox::indicator:unchecked {{
-            border: 1px solid {theme['border']};
+            width: 18px;
+            height: 18px;
+            border: 2px solid {theme['border']};
+            border-radius: 4px;
             background-color: {theme['bg_secondary']};
         }}
         QCheckBox::indicator:checked {{
-            border: 1px solid {theme['border_focus']};
             background-color: {theme['accent']};
+            border: 2px solid {theme['border_focus']};
+            image: none;
+        }}
+        QCheckBox::indicator:checked:hover {{
+            background-color: {theme['accent_hover']};
+        }}
+        QCheckBox::indicator:unchecked:hover {{
+            border: 2px solid {theme['border_focus']};
+            background-color: {theme['bg_tertiary']};
         }}
         QComboBox {{
             background-color: {theme['bg_secondary']};
@@ -376,6 +473,184 @@ def get_theme_stylesheet(theme_name):
             background: none;
         }}
     """
+
+def add_to_startup():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                            r"Software\Microsoft\Windows\CurrentVersion\Run",
+                            0, winreg.KEY_SET_VALUE)
+        exe_path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)
+        winreg.SetValueEx(key, "FurryTools", 0, winreg.REG_SZ, f'"{exe_path}"')
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"Erreur ajout démarrage: {e}")
+        return False
+
+def remove_from_startup():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                            r"Software\Microsoft\Windows\CurrentVersion\Run",
+                            0, winreg.KEY_SET_VALUE)
+        winreg.DeleteValue(key, "FurryTools")
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"Erreur suppression démarrage: {e}")
+        return False
+
+def is_in_startup():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Run",
+                            0, winreg.KEY_READ)
+        winreg.QueryValueEx(key, "FurryTools")
+        winreg.CloseKey(key)
+        return True
+    except:
+        return False
+
+class SteamSearchThread(QThread):
+    results_ready = pyqtSignal(list)
+    def __init__(self, query):
+        super().__init__()
+        self.query = query
+    def run(self):
+        results = []
+        try:
+            import urllib.parse
+            encoded_query = urllib.parse.quote(self.query)
+            url = f"https://store.steampowered.com/api/storesearch/?term={encoded_query}&l=english&cc=us"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                if data.get('items'):
+                    for item in data['items']:
+                        results.append({
+                            'appid': str(item['id']),
+                            'name': item['name'],
+                            'price': item.get('price', {}).get('final_formatted', 'Gratuit'),
+                            'type': item.get('type', 'game')
+                        })
+        except Exception as e:
+            print(f"Erreur recherche Steam: {e}")
+        self.results_ready.emit(results)
+
+class SearchDialog(QDialog):
+    def __init__(self, parent, config):
+        super().__init__(parent)
+        self.parent = parent
+        self.config = config
+        self.search_thread = None
+        theme = self.config.get('theme', 'Gris foncé')
+        self.setStyleSheet(get_theme_stylesheet(theme))
+        self.setWindowTitle("Recherche de jeux Steam")
+        self.setModal(True)
+        width, height = get_scaled_size(600, 500)
+        self.resize(width, height)
+        self.initUI()
+        center_window(self)
+
+    def initUI(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(15, 15, 15, 15)
+        search_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Tapez le nom d'un jeu (les espaces sont acceptés)...")
+        self.search_input.textChanged.connect(self.on_search_text_changed)
+        search_layout.addWidget(self.search_input)
+        self.results_list = QListWidget()
+        self.results_list.setAlternatingRowColors(True)
+        theme = self.config.get('theme', 'Gris foncé')
+        theme_colors = THEMES.get(theme, THEMES["Gris foncé"])
+        self.results_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {theme_colors['bg_secondary']};
+                color: {theme_colors['text_primary']};
+                border: 1px solid {theme_colors['border']};
+                border-radius: 4px;
+                padding: 4px;
+                outline: none;
+            }}
+            QListWidget::item {{
+                padding: 6px;
+                border-bottom: 1px solid {theme_colors['border']};
+                color: {theme_colors['text_primary']};
+                background-color: {theme_colors['bg_secondary']};
+            }}
+            QListWidget::item:selected {{
+                background-color: {theme_colors['accent']};
+                color: {theme_colors['text_primary']};
+            }}
+            QListWidget::item:hover {{
+                background-color: {theme_colors['accent_hover']};
+            }}
+            QListWidget::item:alternate {{
+                background-color: {theme_colors['bg_tertiary']};
+            }}
+        """)
+        self.results_list.itemDoubleClicked.connect(self.on_item_double_clicked)
+        layout.addLayout(search_layout)
+        layout.addWidget(self.results_list)
+        info_label = QLabel("Double-cliquez sur un jeu pour voir les options")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
+        self.setLayout(layout)
+
+    def on_search_text_changed(self, text):
+        if len(text) < 3:
+            self.results_list.clear()
+            return
+        if self.search_thread and self.search_thread.isRunning():
+            self.search_thread.terminate()
+            self.search_thread.wait()
+        self.search_thread = SteamSearchThread(text)
+        self.search_thread.results_ready.connect(self.display_results)
+        self.search_thread.start()
+
+    def display_results(self, results):
+        self.results_list.clear()
+        if not results:
+            item = QListWidgetItem("Aucun résultat trouvé")
+            item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
+            self.results_list.addItem(item)
+            return
+        for game in results:
+            display_text = f"{game['name']} (APPID: {game['appid']})"
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.UserRole, game)
+            self.results_list.addItem(item)
+
+    def on_item_double_clicked(self, item):
+        game = item.data(Qt.UserRole)
+        if not game:
+            return
+        menu = QMenu(self)
+        copy_appid_action = QAction("Copier l'APPID", menu)
+        copy_appid_action.triggered.connect(lambda: self.copy_appid(game['appid']))
+        menu.addAction(copy_appid_action)
+        copy_command_action = QAction("Copier la commande /gen", menu)
+        copy_command_action.triggered.connect(lambda: self.copy_command(game['appid']))
+        menu.addAction(copy_command_action)
+        steamdb_action = QAction("Ouvrir dans SteamDB", menu)
+        steamdb_action.triggered.connect(lambda: self.open_steamdb(game['appid']))
+        menu.addAction(steamdb_action)
+        menu.exec_(QCursor.pos())
+
+    def copy_appid(self, appid):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(appid)
+        QMessageBox.information(self, "Copié", f"APPID {appid} copié dans le presse-papiers")
+
+    def copy_command(self, appid):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(f"/gen appid:{appid}")
+        QMessageBox.information(self, "Copié", f"Commande /gen appid:{appid} copiée dans le presse-papiers")
+
+    def open_steamdb(self, appid):
+        url = QUrl(f"https://steamdb.info/app/{appid}/")
+        QDesktopServices.openUrl(url)
 
 class NameFetcher(QThread):
     names_ready = pyqtSignal(dict)
@@ -638,7 +913,6 @@ class SettingsDialog(QDialog):
         self.known_names = known_names.copy()
         self.name_fetcher = None
         
-        # Utiliser la taille configurée
         width = self.config.get('dialog_width', 600)
         height = self.config.get('dialog_height', 500)
         self.resize(width, height)
@@ -650,7 +924,6 @@ class SettingsDialog(QDialog):
         center_window(self)
 
     def initUI(self):
-        # Appliquer le thème
         theme = self.config.get('theme', 'Gris foncé')
         self.setStyleSheet(get_theme_stylesheet(theme))
         
@@ -658,15 +931,12 @@ class SettingsDialog(QDialog):
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Créer les onglets
         tabs = QTabWidget()
         
-        # Onglet Général
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)
         general_layout.setSpacing(10)
         
-        # Taille du logo
         size_group = QGroupBox("Taille du logo")
         size_layout = QHBoxLayout()
         size_layout.setContentsMargins(10, 10, 10, 10)
@@ -683,7 +953,6 @@ class SettingsDialog(QDialog):
         size_group.setLayout(size_layout)
         general_layout.addWidget(size_group)
 
-        # Police d'écriture
         font_group = QGroupBox("Police d'écriture")
         font_layout = QGridLayout()
         font_layout.setContentsMargins(10, 10, 10, 10)
@@ -728,7 +997,6 @@ class SettingsDialog(QDialog):
         font_group.setLayout(font_layout)
         general_layout.addWidget(font_group)
 
-        # Thème
         theme_group = QGroupBox("Thème")
         theme_layout = QHBoxLayout()
         theme_layout.setContentsMargins(10, 10, 10, 10)
@@ -746,7 +1014,6 @@ class SettingsDialog(QDialog):
         theme_group.setLayout(theme_layout)
         general_layout.addWidget(theme_group)
 
-        # Logo personnalisé
         logo_group = QGroupBox("Logo personnalisé")
         logo_layout = QVBoxLayout()
         logo_layout.setContentsMargins(10, 10, 10, 10)
@@ -766,7 +1033,6 @@ class SettingsDialog(QDialog):
         logo_group.setLayout(logo_layout)
         general_layout.addWidget(logo_group)
 
-        # Présence Discord
         discord_group = QGroupBox("Présence Discord")
         discord_layout = QVBoxLayout()
         discord_layout.setContentsMargins(10, 10, 10, 10)
@@ -779,21 +1045,40 @@ class SettingsDialog(QDialog):
         discord_group.setLayout(discord_layout)
         general_layout.addWidget(discord_group)
 
+        startup_group = QGroupBox("Démarrage")
+        startup_layout = QVBoxLayout()
+        startup_layout.setContentsMargins(10, 10, 10, 10)
+        self.startup_check = QCheckBox("Lancer Furry Tools au démarrage de Windows")
+        self.startup_check.setChecked(is_in_startup())
+        startup_layout.addWidget(self.startup_check)
+        startup_group.setLayout(startup_layout)
+        general_layout.addWidget(startup_group)
+
+        auto_steam_group = QGroupBox("Lancement automatique de Steam")
+        auto_steam_layout = QVBoxLayout()
+        auto_steam_layout.setContentsMargins(10, 10, 10, 10)
+        self.auto_steam_check = QCheckBox("Lancer automatiquement Steam au démarrage de Furry Tools")
+        self.auto_steam_check.setChecked(self.config.get('auto_launch_steam', False))
+        info_label = QLabel("Si activé, Steam sera lancé (et son cache nettoyé) au démarrage de Furry Tools")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #aaaaaa; font-size: 9px;")
+        auto_steam_layout.addWidget(self.auto_steam_check)
+        auto_steam_layout.addWidget(info_label)
+        auto_steam_group.setLayout(auto_steam_layout)
+        general_layout.addWidget(auto_steam_group)
+
         general_layout.addStretch()
         tabs.addTab(general_tab, "Général")
 
-        # Onglet Affichage des jeux
         games_tab = QWidget()
         games_layout = QVBoxLayout(games_tab)
         games_layout.setSpacing(10)
 
-        # Configuration de la grille
         grid_group = QGroupBox("Configuration de la grille")
         grid_layout = QGridLayout()
         grid_layout.setContentsMargins(10, 10, 10, 10)
         grid_layout.setSpacing(8)
         
-        # Nombre de colonnes
         cols_label = QLabel("Nombre de colonnes :")
         cols_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         grid_layout.addWidget(cols_label, 0, 0)
@@ -803,7 +1088,6 @@ class SettingsDialog(QDialog):
         self.grid_cols_spin.setValue(self.config.get('grid_columns', 2))
         grid_layout.addWidget(self.grid_cols_spin, 0, 1)
         
-        # Largeur de la grille
         width_label = QLabel("Largeur de la grille (px) :")
         width_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         grid_layout.addWidget(width_label, 1, 0)
@@ -813,7 +1097,6 @@ class SettingsDialog(QDialog):
         self.grid_width_spin.setValue(self.config.get('grid_width', 400))
         grid_layout.addWidget(self.grid_width_spin, 1, 1)
         
-        # Hauteur maximale
         height_label = QLabel("Hauteur maximale (px) :")
         height_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         grid_layout.addWidget(height_label, 2, 0)
@@ -826,13 +1109,11 @@ class SettingsDialog(QDialog):
         grid_group.setLayout(grid_layout)
         games_layout.addWidget(grid_group)
 
-        # Configuration des boutons
         btn_group = QGroupBox("Configuration des boutons")
         btn_layout = QGridLayout()
         btn_layout.setContentsMargins(10, 10, 10, 10)
         btn_layout.setSpacing(8)
         
-        # Largeur min des boutons
         btn_min_label = QLabel("Largeur min (px) :")
         btn_min_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         btn_layout.addWidget(btn_min_label, 0, 0)
@@ -842,7 +1123,6 @@ class SettingsDialog(QDialog):
         self.btn_min_spin.setValue(self.config.get('button_min_width', 180))
         btn_layout.addWidget(self.btn_min_spin, 0, 1)
         
-        # Largeur max des boutons
         btn_max_label = QLabel("Largeur max (px) :")
         btn_max_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         btn_layout.addWidget(btn_max_label, 1, 0)
@@ -852,7 +1132,6 @@ class SettingsDialog(QDialog):
         self.btn_max_spin.setValue(self.config.get('button_max_width', 250))
         btn_layout.addWidget(self.btn_max_spin, 1, 1)
         
-        # Hauteur des boutons
         btn_height_label = QLabel("Hauteur (px) :")
         btn_height_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         btn_layout.addWidget(btn_height_label, 2, 0)
@@ -862,7 +1141,6 @@ class SettingsDialog(QDialog):
         self.btn_height_spin.setValue(self.config.get('button_height', 40))
         btn_layout.addWidget(self.btn_height_spin, 2, 1)
         
-        # Longueur max des noms
         name_len_label = QLabel("Longueur max des noms :")
         name_len_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         btn_layout.addWidget(name_len_label, 3, 0)
@@ -878,7 +1156,6 @@ class SettingsDialog(QDialog):
         games_layout.addStretch()
         tabs.addTab(games_tab, "Affichage des jeux")
 
-        # Onglet Taille de la fenêtre
         window_tab = QWidget()
         window_layout = QVBoxLayout(window_tab)
         window_layout.setSpacing(10)
@@ -888,7 +1165,6 @@ class SettingsDialog(QDialog):
         window_grid.setContentsMargins(10, 10, 10, 10)
         window_grid.setSpacing(8)
         
-        # Largeur
         dialog_width_label = QLabel("Largeur (px) :")
         dialog_width_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         window_grid.addWidget(dialog_width_label, 0, 0)
@@ -898,7 +1174,6 @@ class SettingsDialog(QDialog):
         self.dialog_width_spin.setValue(self.config.get('dialog_width', 600))
         window_grid.addWidget(self.dialog_width_spin, 0, 1)
         
-        # Hauteur
         dialog_height_label = QLabel("Hauteur (px) :")
         dialog_height_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         window_grid.addWidget(dialog_height_label, 1, 0)
@@ -913,7 +1188,6 @@ class SettingsDialog(QDialog):
         window_layout.addStretch()
         tabs.addTab(window_tab, "Fenêtre")
 
-        # Onglet Jeux privés
         private_tab = QWidget()
         private_layout = QVBoxLayout(private_tab)
         private_layout.setSpacing(10)
@@ -947,7 +1221,6 @@ class SettingsDialog(QDialog):
 
         main_layout.addWidget(tabs)
 
-        # Boutons OK/Annuler
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(10)
         ok_btn = QPushButton("OK")
@@ -1020,6 +1293,8 @@ class SettingsDialog(QDialog):
     def get_updated_config(self):
         self.config['icon_size'] = self.size_slider.value()
         self.config['enable_discord_rpc'] = self.discord_check.isChecked()
+        self.config['start_with_windows'] = self.startup_check.isChecked()
+        self.config['auto_launch_steam'] = self.auto_steam_check.isChecked()
         self.config['font_family'] = self.font_family_combo.currentText()
         self.config['font_size'] = self.font_size_slider.value()
         self.config['theme'] = self.theme_combo.currentText()
@@ -1050,7 +1325,6 @@ class ProfileCreationDialog(QDialog):
         self.setWindowTitle("Créer un profile")
         self.setModal(True)
         
-        # Utiliser la configuration du parent
         if hasattr(parent, 'config'):
             self.config = parent.config
         else:
@@ -1331,8 +1605,14 @@ class FurryTools(QWidget):
         open_folder_action = self.context_menu.addAction("Ouvrir le dossier des jeux")
         open_folder_action.triggered.connect(self.open_target_folder)
         
+        open_cache_folder_action = self.context_menu.addAction("Ouvrir le dossier cache de Furry Tools")
+        open_cache_folder_action.triggered.connect(self.open_cache_folder)
+        
         extract_appid_action = self.context_menu.addAction("Extraire AppID du lien")
         extract_appid_action.triggered.connect(self.extract_appid_from_clipboard)
+        
+        search_action = self.context_menu.addAction("Rechercher un jeu Steam")
+        search_action.triggered.connect(self.open_search_dialog)
         
         discord_action = self.context_menu.addAction("Project Lightning")
         discord_action.triggered.connect(self.open_discord)
@@ -1351,6 +1631,10 @@ class FurryTools(QWidget):
         
         quit_action = self.context_menu.addAction("Quitter Furry Tools")
         quit_action.triggered.connect(self.close_application)
+
+    def open_search_dialog(self):
+        dialog = SearchDialog(self, self.config)
+        dialog.exec_()
 
     def populate_profile_menu(self):
         self.profile_menu.clear()
@@ -1445,7 +1729,7 @@ class FurryTools(QWidget):
             return False
 
     def open_discord(self):
-        QDesktopServices.openUrl(QUrl("https://discord.com/invite/Hs9Crnhg"))
+        QDesktopServices.openUrl(QUrl("https://discord.gg/g7eqjzykrw"))
 
     def show_credits(self):
         QMessageBox.information(self, "Crédits", "by rvmillions")
@@ -1520,6 +1804,14 @@ class FurryTools(QWidget):
                 new_config = dialog.get_updated_config()
                 old_discord_enabled = self.config.get('enable_discord_rpc', False)
                 new_discord_enabled = new_config.get('enable_discord_rpc', False)
+                
+                old_startup = is_in_startup()
+                new_startup = new_config.get('start_with_windows', False)
+                
+                if new_startup and not old_startup:
+                    add_to_startup()
+                elif not new_startup and old_startup:
+                    remove_from_startup()
                 
                 self.config = new_config
                 save_config(self.config)
@@ -1888,6 +2180,9 @@ def main():
     
     window = FurryTools()
     window.show()
+    
+    if window.config.get('auto_launch_steam', False) and window.steam_path and os.path.exists(window.steam_path):
+        QTimer.singleShot(500, window.restart_steam)
     
     sys.exit(app.exec_())
 
