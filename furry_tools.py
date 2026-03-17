@@ -12,6 +12,8 @@ import winreg
 import hashlib
 import traceback
 import threading
+import tempfile
+import webbrowser
 from datetime import datetime
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QMenu,
                              QMessageBox, QAction, QDialog, QVBoxLayout,
@@ -32,6 +34,23 @@ try:
     PPRESENCE_AVAILABLE = True
 except ImportError:
     PPRESENCE_AVAILABLE = False
+
+def get_current_version():
+    try:
+        version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
+        if os.path.exists(version_file):
+            with open(version_file, 'r', encoding='utf-8') as f:
+                version = f.read().strip()
+                if version:
+                    return version
+    except Exception as e:
+        print(f"Erreur lecture version.txt: {e}")
+    return "1.0.8"
+
+CURRENT_VERSION = get_current_version()
+VERSION_URL = "https://raw.githubusercontent.com/RvMillions/Furry-Tools/main/version.txt"
+REPO_URL = "https://github.com/RvMillions/Furry-Tools"
+API_URL = "https://api.github.com/repos/RvMillions/Furry-Tools/releases/latest"
 
 def global_excepthook(exctype, value, tb):
     error_msg = ''.join(traceback.format_exception(exctype, value, tb))
@@ -210,10 +229,11 @@ def load_config():
         'button_height': 40,
         'name_max_length': 40,
         'dialog_width': 600,
-        'dialog_height': 500,
+        'dialog_height': 600,
         'theme': 'Gris foncé',
         'start_with_windows': False,
-        'auto_launch_steam': False
+        'auto_launch_steam': False,
+        'auto_check_updates': True
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -509,6 +529,64 @@ def is_in_startup():
         return True
     except:
         return False
+
+class UpdateChecker(QThread):
+    update_checked = pyqtSignal(bool, str, str)
+    def __init__(self, current_version):
+        super().__init__()
+        self.current_version = current_version
+    def run(self):
+        try:
+            req = urllib.request.Request(VERSION_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                latest_version = response.read().decode().strip()
+                has_update = self.compare_versions(latest_version, self.current_version)
+                self.update_checked.emit(has_update, latest_version, self.current_version)
+        except Exception as e:
+            self.update_checked.emit(False, self.current_version, self.current_version)
+    def compare_versions(self, v1, v2):
+        try:
+            v1_parts = [int(x) for x in v1.split('.')]
+            v2_parts = [int(x) for x in v2.split('.')]
+            for i in range(max(len(v1_parts), len(v2_parts))):
+                v1_val = v1_parts[i] if i < len(v1_parts) else 0
+                v2_val = v2_parts[i] if i < len(v2_parts) else 0
+                if v1_val > v2_val:
+                    return True
+                elif v1_val < v2_val:
+                    return False
+            return False
+        except:
+            return False
+
+class UpdateDownloader(QThread):
+    progress = pyqtSignal(int)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+    def __init__(self, download_url, save_path):
+        super().__init__()
+        self.download_url = download_url
+        self.save_path = save_path
+    def run(self):
+        try:
+            req = urllib.request.Request(self.download_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                chunk_size = 8192
+                with open(self.save_path, 'wb') as f:
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            percent = int(downloaded * 100 / total_size)
+                            self.progress.emit(percent)
+            self.finished.emit(self.save_path)
+        except Exception as e:
+            self.error.emit(str(e))
 
 class SteamSearchThread(QThread):
     results_ready = pyqtSignal(list)
@@ -912,9 +990,11 @@ class SettingsDialog(QDialog):
         self.all_appids = all_appids
         self.known_names = known_names.copy()
         self.name_fetcher = None
+        self.update_checker = None
+        self.update_downloader = None
         
         width = self.config.get('dialog_width', 600)
-        height = self.config.get('dialog_height', 500)
+        height = self.config.get('dialog_height', 600)
         self.resize(width, height)
         
         self.setWindowTitle("Paramètres")
@@ -1180,7 +1260,7 @@ class SettingsDialog(QDialog):
         
         self.dialog_height_spin = QSpinBox()
         self.dialog_height_spin.setRange(400, 900)
-        self.dialog_height_spin.setValue(self.config.get('dialog_height', 500))
+        self.dialog_height_spin.setValue(self.config.get('dialog_height', 600))
         window_grid.addWidget(self.dialog_height_spin, 1, 1)
         
         window_group.setLayout(window_grid)
@@ -1219,6 +1299,63 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(private_tab, "Jeux privés")
 
+        update_tab = QWidget()
+        update_layout = QVBoxLayout(update_tab)
+        update_layout.setSpacing(10)
+
+        version_group = QGroupBox("Version actuelle")
+        version_layout = QHBoxLayout()
+        version_layout.setContentsMargins(10, 10, 10, 10)
+        version_label = QLabel(f"Furry Tools V{CURRENT_VERSION}")
+        version_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #00ff00;")
+        version_layout.addWidget(version_label)
+        version_group.setLayout(version_layout)
+        update_layout.addWidget(version_group)
+
+        check_group = QGroupBox("Vérification des mises à jour")
+        check_layout = QVBoxLayout()
+        check_layout.setContentsMargins(10, 10, 10, 10)
+        check_layout.setSpacing(8)
+
+        self.auto_update_check = QCheckBox("Vérifier automatiquement les mises à jour au démarrage")
+        self.auto_update_check.setChecked(self.config.get('auto_check_updates', True))
+        check_layout.addWidget(self.auto_update_check)
+
+        check_now_btn = QPushButton("Vérifier les mises à jour maintenant")
+        check_now_btn.clicked.connect(self.check_for_updates)
+        check_layout.addWidget(check_now_btn)
+
+        self.update_status_label = QLabel("")
+        self.update_status_label.setWordWrap(True)
+        check_layout.addWidget(self.update_status_label)
+
+        check_group.setLayout(check_layout)
+        update_layout.addWidget(check_group)
+
+        download_group = QGroupBox("Mise à jour")
+        download_layout = QVBoxLayout()
+        download_layout.setContentsMargins(10, 10, 10, 10)
+        download_layout.setSpacing(8)
+
+        self.download_btn = QPushButton("Télécharger la mise à jour")
+        self.download_btn.clicked.connect(self.download_update)
+        self.download_btn.setEnabled(False)
+        download_layout.addWidget(self.download_btn)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        download_layout.addWidget(self.progress_bar)
+
+        github_btn = QPushButton("Ouvrir la page GitHub")
+        github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REPO_URL)))
+        download_layout.addWidget(github_btn)
+
+        download_group.setLayout(download_layout)
+        update_layout.addWidget(download_group)
+
+        update_layout.addStretch()
+        tabs.addTab(update_tab, "Mise à jour")
+
         main_layout.addWidget(tabs)
 
         buttons_layout = QHBoxLayout()
@@ -1238,6 +1375,65 @@ class SettingsDialog(QDialog):
         
         self.font_family_combo.currentTextChanged.connect(self.update_preview_font)
         self.font_size_slider.valueChanged.connect(self.update_preview_font)
+
+        if self.config.get('auto_check_updates', True):
+            QTimer.singleShot(500, self.check_for_updates)
+
+    def check_for_updates(self):
+        self.update_status_label.setText("Vérification en cours...")
+        self.download_btn.setEnabled(False)
+        self.update_checker = UpdateChecker(CURRENT_VERSION)
+        self.update_checker.update_checked.connect(self.on_update_checked)
+        self.update_checker.start()
+
+    def on_update_checked(self, has_update, latest_version, current_version):
+        if has_update:
+            self.update_status_label.setText(f"Une nouvelle version V{latest_version} est disponible !")
+            self.download_btn.setEnabled(True)
+            self.latest_version = latest_version
+        else:
+            self.update_status_label.setText(f"Vous utilisez la dernière version V{current_version}")
+            self.download_btn.setEnabled(False)
+
+    def download_update(self):
+        try:
+            req = urllib.request.Request(API_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                if data.get('assets') and len(data['assets']) > 0:
+                    download_url = data['assets'][0]['browser_download_url']
+                else:
+                    QDesktopServices.openUrl(QUrl(REPO_URL))
+                    return
+
+            save_path = os.path.join(tempfile.gettempdir(), f"FurryTools_Update_{self.latest_version}.exe")
+            
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setValue(0)
+            self.download_btn.setEnabled(False)
+            
+            self.update_downloader = UpdateDownloader(download_url, save_path)
+            self.update_downloader.progress.connect(self.progress_bar.setValue)
+            self.update_downloader.finished.connect(self.on_download_finished)
+            self.update_downloader.error.connect(self.on_download_error)
+            self.update_downloader.start()
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Impossible de récupérer la mise à jour: {e}")
+
+    def on_download_finished(self, file_path):
+        self.progress_bar.setVisible(False)
+        reply = QMessageBox.question(self, "Mise à jour téléchargée",
+                                   f"La mise à jour a été téléchargée.\nVoulez-vous lancer l'installateur maintenant ?",
+                                   QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            os.startfile(file_path)
+            QApplication.quit()
+
+    def on_download_error(self, error_msg):
+        self.progress_bar.setVisible(False)
+        QMessageBox.critical(self, "Erreur de téléchargement",
+                           f"Erreur lors du téléchargement: {error_msg}\n\nOuverture de la page GitHub...")
+        QDesktopServices.openUrl(QUrl(REPO_URL))
 
     def on_theme_changed(self, theme_name):
         self.setStyleSheet(get_theme_stylesheet(theme_name))
@@ -1295,6 +1491,7 @@ class SettingsDialog(QDialog):
         self.config['enable_discord_rpc'] = self.discord_check.isChecked()
         self.config['start_with_windows'] = self.startup_check.isChecked()
         self.config['auto_launch_steam'] = self.auto_steam_check.isChecked()
+        self.config['auto_check_updates'] = self.auto_update_check.isChecked()
         self.config['font_family'] = self.font_family_combo.currentText()
         self.config['font_size'] = self.font_size_slider.value()
         self.config['theme'] = self.theme_combo.currentText()
